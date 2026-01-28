@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.spyproject/
+.DS_Store
+*.csv
+*.xlsx
+*.pdf
+*.png
+*.ppt
+*.pptx
