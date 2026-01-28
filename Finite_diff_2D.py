@@ -3,6 +3,18 @@
 Created on Mon Jan 12 17:57:40 2026
 
 @author: Maël
+Notes perso pour le github :
+
+Sauvegarder le fichier
+
+git status
+
+git add .
+
+git commit -m "Description du commit"
+
+git push
+
 """
 
 import numpy as np
