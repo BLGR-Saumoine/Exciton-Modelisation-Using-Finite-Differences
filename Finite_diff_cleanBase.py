@@ -49,22 +49,8 @@ geometrie_puits = [
 def makePotentiel(type2Boite, x, constante):
     """
     Génère un vecteur potentiel V en fonction du type demandé, la taille du potentiel suit le linspace x
-
-    Parameters
-    ----------
-    type2Boite : string
-        Le type de potentiel à générer ("coulomb", "carre", "harmonique", "stark", "multi-carre").
-        
-    x : numpy.ndarray
-        vecteur de position.
-        
-    constante : list or float or tuple
-        dictionnaire ou valeur unique selon le besoin (paramètres du potentiel).
-
-    Returns
-    -------
-    V : numpy.ndarray
-        Le vecteur potentiel calculé sur la grille x.
+    x : vecteur de position
+    constante : dictionnaire ou valeur unique selon le besoin
     """
 
     if type2Boite == "coulomb":
@@ -107,22 +93,9 @@ def makePotentiel(type2Boite, x, constante):
 def makeMasse(type2Boite, x, constante):
     """
     Génère un vecteur de masses effectives qui suit le linspace x
-
-    Parameters
-    ----------
-    type2Boite : str
-        chaine de charactère qui indique le type de boite et donc la forme que suivra la masse.
-        
-    x : numpy.ndarray
-        vecteur de position.
-        
-    constante : list or float
-        paramètres de masse.
-
-    Returns
-    -------
-    masse : numpy.ndarray
-        Le vecteur des masses effectives calculé sur la grille x.
+    type2Boite : chaine de charactère qui indique le type de boite et donc la forme que suivra la masse
+    x : vecteur de position
+    constante : paramètres de masse
     """
     if type2Boite == "carre":
         # constante = [épaisseur, masse à l'intérieur du puits, masse à l'exterieur]
@@ -156,33 +129,11 @@ def makeMasse(type2Boite, x, constante):
 @njit 
 def makeSparseHamiltonien(V, masses, N, pas, bdd = False) :
     """
-    Renvoie des listes qui représentes les diagonales de la matrice du hamiltonien, utilisation de numba pour accélérer le calcul
-
-    Parameters
-    ----------
-    V : numpy.ndarray
-        Le potentiel de base issue du type de boite.
-        
-    masses : numpy.ndarray
-        Utilisée pour le hamiltonien de BenDanielDuke, contient un array numpy de la taille de x des masses à chaque points.
-        
-    N : int
-        Nombre de points dans le linspace x.
-        
-    pas : float
-        Écart entre les points dans le linspace x, explicité ici pour ne pas devoir redémarré le kernel en cas de changement de pas.
-        
-    bdd : bool, optional
-        booleen pour préciser le type de hamiltonien. The default is False.
-
-    Returns
-    -------
-    top : numpy.ndarray
-        Diagonale supérieure de la matrice hamiltonienne.
-    middle : numpy.ndarray
-        Diagonale principale de la matrice hamiltonienne.
-    bottom : numpy.ndarray
-        Diagonale inférieure de la matrice hamiltonienne.
+    Renvoie des listes qui représentes les diagonales de la matrice du hamiltonien
+    V : Le potentiel de base issue du type de boite
+    masses : Utilisée pour le hamiltonien de BenDanielDuke, contient un array numpy de la taille de x des masses à chaque points
+    pas : Écart entre les points dans le linspace x, explicité ici pour ne pas devoir redémarré le kernel en cas de changement de pas
+    bdd : booleen pour préciser le type de hamiltonien
     """
     
     middle = V.copy().astype(np.float64) # La diagonale centrale, égale à V pour le moment
@@ -218,26 +169,13 @@ def makeSparseHamiltonien(V, masses, N, pas, bdd = False) :
 def makeGap(x, constante, gapConstant = True, Varshni = False) :
     """
     Renvoie une valeur de Gap, cette valeur est un array meme quand le gap est constant afin d'éviter les erreures potentielles
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        vecteur de position pour le gap non constant.
-        
-    constante : list or float
-        en fonction du type de Gap, elle changeront. Pour le moment, je considère qu'on estime le Gap uniquement pour des boites carrés ou multi carrés.
-    
-    gapConstant : bool, optional
-        J'ai vu que le Gap pouvait changer en focntion de la température, je vais essayer de simuler ce Gap. The default is True.
-    
-    Varshni : bool, optional
-        Booleen qui indique si on estime le Gap à partir de la loi de Varshni. The default is False.
-
-    Returns
-    -------
-    gap : numpy.ndarray
-        Le vecteur représentant la valeur du Gap sur la grille x.
+    x : vecteur de position pour le gap non constant
+    gapConstant : J'ai vu que le Gap pouvait changer en focntion de la température, je vais essayer de simuler ce Gap
+    constante : en fonction du type de Gap, elle changeront
+    Pour le moment, je considère qu'on estime le Gap uniquement pour des boites carrés ou multi carrés
+    Varshni : Booleen qui indique si on estime le Gap à partir de la loi de Varshni
     """
+       
     if gapConstant and not Varshni :
         #Si on prend un Gap constant et qu'on ne le calcul pas avec la loi de Varshni, on ressort juste le gap 
         gap = constante
@@ -281,63 +219,21 @@ def hartree_sparse(
         maxi = 5000, toler = 1e-4, jacobi = True, phi_e_guess=None,
         phi_h_guess=None, alpha = 1, recouvrement_hart = False):
     """
-    Applique la méthode de hartree à un trou et un électron
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        linspace sur lequel on discrétise les positions.
-    Ve : numpy.ndarray
-        Potentiel créé par la géométrie de la boite de l'éléctron (potentiel de base, on ne considère pas encore les interactions coulombiennes).
-    Vh : numpy.ndarray
-        Potentiel créé par la géométrie de la boite du trou.
-    m_e : numpy.ndarray
-        Masse effective de l'électron sur la grille.
-    m_h : numpy.ndarray
-        Masse effective du trou sur la grille.
-    N : int
-        Nombre de points dans le linspace x, explicité ici pour ne pas devoir redémarré le kernel en cas de changement de pas.
-    pas : float
-        Écart entre les points dans le linspace x, explicité ici pour ne pas devoir redémarré le kernel en cas de changement de pas.
-    V_coul : numpy.ndarray
-        Matrice d'interaction coulombienne.
-    lvl_e : int, optional
-        indique le niveau d'énergie de l'electron sur lequel on va travailler. The default is 0.
-    lvl_h : int, optional
-        indique le niveau d'énergie du trou sur lequel on va travailler. The default is 0.
-    maxi : int, optional
-        nombre d'itérations maximum qu'on autorise si on a toujours pas convergé. The default is 5000.
-    toler : float, optional
-        valeur minimum de différence entre les énergies calculées à chaque itérations, si la différences est inférieure à la tolérance, on considère qu'on a convergé. The default is 1e-4.
-    jacobi : bool, optional
-        booleen qui indique l'ordre suivi dans la méthode de hartree. The default is True.
-    phi_e_guess : numpy.ndarray, optional
-        fonction d'onde de l'éléctron, utilisé quand on applique un champs à l'exciton, afin de ne pas repartir de 0. The default is None.
-    phi_h_guess : numpy.ndarray, optional
-        même chose que phi_e_guess mais appliqué au trou. The default is None.
-    alpha : float, optional
-        constante entre 0 et 1 qui permet de mélanger le potentiel calculé entre l'itération actuelle et l'itération précédente. The default is 1.
-    recouvrement_hart : bool, optional
-        booleen qui indique si je veux calculer le recouvrement de l'exciton. The default is False.
-
-    Returns
-    -------
-    E_exciton : float
-        Énergie totale de l'exciton après convergence.
-    Ve_temp : numpy.ndarray
-        Potentiel final ressenti par l'électron.
-    Vh_temp : numpy.ndarray
-        Potentiel final ressenti par le trou.
-    phi_e : numpy.ndarray
-        Fonction d'onde finale de l'électron.
-    phi_h : numpy.ndarray
-        Fonction d'onde finale du trou.
-    stockage_e : numpy.ndarray
-        Historique des fonctions d'onde de l'électron au cours des itérations.
-    stockage_h : numpy.ndarray
-        Historique des fonctions d'onde du trou au cours des itérations.
-    recouvrement : float
-        Valeur du recouvrement si demandé, sinon 0.
+    Applique la méthode de hartree à un trou et un électron 
+    x : linspace sur lequel on discrétise les positions
+    Ve : Potentiel créé par la géométrie de la boite de l'éléctron (potentiel de base, on ne considère pas encore les interactions coulombiennes)
+    Vh : Potentiel créé par la géométrie de la boite du trou
+    N : Nombre de points dans le linspace x, explicité ici pour ne pas devoir redémarré le kernel en cas de changement de pas
+    pas : Écart entre les points dans le linspace x, explicité ici pour ne pas devoir redémarré le kernel en cas de changement de pas
+    lvl_e : indique le niveau d'énergie de l'electron sur lequel on va travailler 
+    lvl_h : indique le niveau d'énergie du trou sur lequel on va travailler 
+    maxi : nombre d'itérations maximum qu'on autorise si on a toujours pas convergé
+    toler : valeur minimum de différence entre les énergies calculées à chaque itérations, si la différences est inférieure à la tolérance, on considère qu'on a convergé
+    jacobi : booleen qui indique l'ordre suivi dans la méthode de hartree
+    phi_e_guess : fonction d'onde de l'éléctron, utilisé quand on applique un champs à l'exciton, afin de ne pas repartir de 0
+    phi_h_guess : même chose que phi_e_guess mais appliqué au trou
+    alpha : constante entre 0 et 1 qui permet de mélanger le potentiel calculé entre l'itération actuelle et l'itération précédente
+    recouvrement_hart : booleen qui indique si je veux calculer le recouvrement de l'exciton
     """
     
     step = 0 # Nombre d'itérations qu'on fera
@@ -502,51 +398,10 @@ def hartree_sparse(
 
 def configInteraction(
         x, Ve, Vh, m_e, m_h, N, pas, V_coul, lvl_e = 0, lvl_h = 0, 
-        toler = 1e-4, lvl_exciton= 0, matriciel = True):
+        maxi = 5000, toler = 1e-4, jacobi = True, phi_e_guess=None,
+        phi_h_guess=None, alpha = 1, recouvrement_hart = False):
     """
-    Applique la configuration Interaction à un électron et un trou
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        linspace sur lequel on discrétise les positions.
-    Ve : numpy.ndarray
-        Potentiel créé par la géométrie de la boite de l'éléctron (potentiel de base, on ne considère pas encore les interactions coulombiennes).
-    Vh : numpy.ndarray
-        Potentiel créé par la géométrie de la boite du trou.
-    m_e : numpy.ndarray
-        Masse effective de l'électron.
-    m_h : numpy.ndarray
-        Masse effective du trou.
-    N : int
-        Nombre de points dans le linspace x, explicité ici pour ne pas devoir redémarré le kernel en cas de changement de pas (utile quand j'utilise numba).
-    pas : float
-        Écart entre les points dans le linspace x, explicité ici pour ne pas devoir redémarré le kernel en cas de changement de pas.
-    V_coul : numpy.ndarray
-        Matrice d'interaction coulombienne.
-    lvl_e : int, optional
-        indique le niveau d'énergie de l'electron sur lequel on va travailler. The default is 0.
-    lvl_h : int, optional
-        indique le niveau d'énergie du trou sur lequel on va travailler. The default is 0.
-    toler : float, optional
-        utilisé ici pour accélerer la diagonilasion de la matrice creuse. The default is 1e-4.
-    lvl_exciton : int, optional
-        permet d'étudier un état précis de l'exction. The default is 0.
-    matriciel : bool, optional
-        boolen pour voir si j'utilise le produit matriciel ou pas dans mon calcul. The default is True.
-
-    Returns
-    -------
-    energies_CI : numpy.ndarray
-        Les valeurs propres (énergies) de l'hamiltonien CI.
-    eigenvectors_CI : numpy.ndarray
-        Les vecteurs propres (coefficients) de l'hamiltonien CI.
-    wavefunc_e : numpy.ndarray
-        Les fonctions d'onde de base de l'électron.
-    wavefunc_h : numpy.ndarray
-        Les fonctions d'onde de base du trou.
-    Psi_exciton_2D : numpy.ndarray
-        La fonction d'onde de l'exciton reconstruite en 2D (x_electron, x_trou).
+    fuck
     """
 
     He = diags(makeSparseHamiltonien(Ve, masses=m_e, N=N, pas=pas, bdd=True), [1, 0, -1], format='csr')
@@ -561,270 +416,171 @@ def configInteraction(
     for i in range(lvl_h) :
         wavefunc_h[:, i] /= np.sqrt(np.sum(wavefunc_h[:, i]**2) * pas)
     
+    # 3. Calculer les éléments de la matrice Hamiltonienne 4×4
+    H_CI = np.zeros((4, 4))
     
-    H_CI = np.zeros((lvl_e * lvl_h, lvl_e * lvl_h))
+    configs = [(0,0), (0,1), (1,0), (1,1)]
     
-    configs = []
-    
-    for i in range(lvl_e):
-        for j in range(lvl_h):
-            configs.append((i,j))
-    # [(0,0), (0,1), (0,2), (1,0), (1,1), (1,2), (2,0), (2,1), (2,2)]
-    if matriciel :
-        for i in range(len(configs)):
-            n_e_i, n_h_i = configs[i]
-            for j in range(len(configs)):
-                n_e_j, n_h_j = configs[j]
-                
-                if i == j:
-                    H_CI[i, j] = listEnergies_e[n_e_i] + listEnergies_h[n_h_i]
-                
-                V_element = ((wavefunc_e[:, n_e_i] * wavefunc_e[:, n_e_j]) @ V_coul) @ (wavefunc_h[:, n_h_j] * wavefunc_h[:, n_h_i]) * pas**2
-                
-                H_CI[i, j] += V_element
-                
-    else :
-        for i in range(len(configs)):
-            n_e_i, n_h_i = configs[i]
-            for j in range(len(configs)):
-                n_e_j, n_h_j = configs[j]
-                
-                if i == j:
-                    H_CI[i, j] = listEnergies_e[n_e_i] + listEnergies_h[n_h_i]
-        
-                V_element = 0.0
-                
-                # Double somme sur les positions discrètes (je vais faire le matriciel sous peu)
-                for k in range(N):      # position électron
-                    for l in range(N):  # position trou
-                        psi_e_i = wavefunc_e[k, n_e_i]
-                        psi_h_i = wavefunc_h[l, n_h_i]
-                        psi_e_j = wavefunc_e[k, n_e_j]
-                        psi_h_j = wavefunc_h[l, n_h_j]
-                        
-                        V_element += psi_e_i * psi_h_i * V_coul[k, l] * psi_e_j * psi_h_j * pas * pas
-                
-                H_CI[i, j] += V_element
-                
-    
-    energies_CI, eigenvectors_CI = eigh(H_CI)
-    
-    C_coeffs = eigenvectors_CI[:, lvl_exciton] 
-    
-    Psi_exciton_2D = np.zeros((N, N))
-    
-    for k in range(len(configs)):
-        n_e, n_h = configs[k]
-        coef = C_coeffs[k]
-
-        Psi_exciton_2D += coef * np.outer(wavefunc_e[:, n_e], wavefunc_h[:, n_h])
-    
-    return energies_CI, eigenvectors_CI, wavefunc_e, wavefunc_h, Psi_exciton_2D
-    
-#----------------------------------------------------------------------------------
-#Je sais pas comment l'appeler mais c'est ce qui va me serir à calculer l'expression de mes résusltats sur la base des états propres
-#avant l'attraction de Coulomb
-
-def diagonalisationBase(
-        x, Ve, Vh, m_e, m_h, N, PsiE, PsiH, lvlParticle = 0,
-        toler = 1e-4):
-    """
-    Parameters
-    ----------
-    x : numpy.ndarray
-        linspace sur lequel on discrétise les positions.
-    Ve : numpy.ndarray
-        Potentiel créé par la géométrie de la boite de l'éléctron (potentiel de base, on ne considère pas encore les interactions coulombiennes).
-    Vh : numpy.ndarray
-        Potentiel créé par la géométrie de la boite du trou (même chose que pour Ve).
-    m_e : numpy.ndarray
-        Masse effective de l'électron.
-    m_h : numpy.ndarray
-        Masse effective du trou.
-    N : int
-        Nombre de points dans le linspace x.
-    PsiE : numpy.ndarray
-        Fonction d'onde de l'electron calculé avant d'ont on va calculer le produit scalaire avec la fonction d'onde "brute".
-    PsiH : numpy.ndarray
-        Fonction d'onde du trou calculé avant d'ont on va calculer le produit scalaire avec la fonction d'onde "brute".
-    lvlParticle : int, optional
-        DESCRIPTION. The default is 0.
-    toler : float, optional
-        DESCRIPTION. The default is 1e-4.
-
-    Returns
-    -------
-    overlap_e : float
-        valeur du recouvrement de PsiE et la fonction d'onde de l'electron hors attraction de coulomb.
-    overlap_h : float
-        valeur du recouvrement de PsiH et la fonction d'onde du trou hors attraction de coulomb.
-    """
-    
-    He = diags(makeSparseHamiltonien(Ve, masses=m_e, N=N, pas=pas, bdd=True), [1, 0, -1], format='csr')
-    listEnergies_e, wavefunc_e = eigsh(He, k=lvlParticle + 1, which='SA', tol = toler)
-    
-    Hh = diags(makeSparseHamiltonien(Vh, masses=m_h, N=N, pas=pas, bdd=True), [1, 0, -1], format='csr')
-    listEnergies_h, wavefunc_h = eigsh(Hh, k=lvlParticle + 1, which='SA', tol = toler)
-    
-    overlap_e = wavefunc_e[:,lvlParticle] @ PsiE
-    overlap_h = wavefunc_h[:,lvlParticle] @ PsiH
-    
-    return overlap_e, overlap_h
-
-#------------------------------------------------------------------------
-
-
-def applyField(x, m, lowPotential, highPotential, discretePotential, Ve, Vh, m_e, m_h, energyLVL) :
-    """
-    Simule l'effet d'un champ électrique variable (Effet Stark) sur l'exciton en comparant les méthodes Hartree et CI.
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        Linspace des positions sur lequel le système est défini.
-    m : numpy.ndarray
-        (Argument non utilisé actuellement dans la logique, hérité de la structure précédente).
-    lowPotential : float
-        Valeur minimale du champ électrique à appliquer (en kV/cm ou unité du système).
-    highPotential : float
-        Valeur maximale du champ électrique à appliquer.
-    discretePotential : int
-        Nombre de points de simulation pour le champ électrique (résolution du balayage).
-    Ve : numpy.ndarray
-        Potentiel de structure de l'électron (Puits quantiques sans champ).
-    Vh : numpy.ndarray
-        Potentiel de structure du trou.
-    m_e : numpy.ndarray
-        Carte des masses effectives de l'électron sur la grille x.
-    m_h : numpy.ndarray
-        Carte des masses effectives du trou sur la grille x.
-    energyLVL : int
-        Nombre de niveaux d'énergie excitoniques à calculer, suivre et stocker (ex: 3 pour fondamental + 2 excités).
-
-    Returns
-    -------
-    F_vals : numpy.ndarray
-        Le vecteur des valeurs de champ électrique calculées (axe X des graphes).
-    energiesHart : numpy.ndarray
-        Matrice (energyLVL, discretePotential) contenant les énergies totales triées calculées par Hartree.
-    energiesCI : numpy.ndarray
-        Matrice (energyLVL, discretePotential) contenant les énergies totales calculées par Interaction de Configuration.
-    overlapHart : numpy.ndarray
-        Matrice des recouvrements spatiaux (|integrale(psi_e * psi_h)|^2) associés aux états Hartree triés.
-    overlapCI : numpy.ndarray
-        Matrice des projections (overlap) entre l'état CI n°j et le produit des états libres n°j.
-    """
-    
-    overlapHart = np.zeros((energyLVL, discretePotential))
-    energiesCI = np.zeros((energyLVL, discretePotential))
-
-    dist = np.abs(np.subtract.outer(x, x)) 
-    V_coul = -e2_eps / np.sqrt(dist**2 + a_coulomb**2)   
-    #On initialise le potentiel de Coulomb en chaque point, on n'a pas encore appliqué la fonction d'onde 
-    
-    overlapCI = np.zeros((energyLVL, discretePotential))
-    overlapHart = np.zeros((energyLVL, discretePotential))
-    
-    F_vals = np.linspace(lowPotential, highPotential, discretePotential)
-    gap = makeGap(x, [gap_in])
-    
-    for i, F in enumerate(F_vals):
-        Vstark_e  = makePotentiel("stark", x, F)
-        Vstark_h  = makePotentiel("stark", x, -1*F)
-        
-        Ve_total = Ve + Vstark_e + gap
-        Vh_total = Vh + Vstark_h
-        #On recrée les potentiels du trou et de l'électron avec le nouveau champs électrique
-        
-        E_CI_raw, Vec_CI, base_e, base_h, _ = configInteraction(
-            x, Ve_total, Vh_total, m_e, m_h, N, pas, V_coul, 
-            lvl_e=energyLVL + 3, lvl_h=energyLVL + 3, lvl_exciton=0
-        )
-        
-        energiesCI[:, i] = E_CI_raw[:energyLVL]
-        
-        for j in range(energyLVL):
-
-            linear_index = j * (energyLVL + 3) + j 
+    for i in range(4):
+        n_e_i, n_h_i = configs[i]
+        for j in range(4):
+            n_e_j, n_h_j = configs[j]
             
-            coeff = Vec_CI[linear_index, j]
-            overlapCI[j, i] = coeff**2
+            if i == j:
+                H_CI[i, j] = listEnergies_e[n_e_i] + listEnergies_h[n_h_i]
             
-        for j in range(energyLVL):
-
-            phi_ref_e = base_e[:, j]
-            phi_ref_h = base_h[:, j]
-
-
-            E_hart, _, _, phi_e_hart, phi_h_hart, _, _, _ = hartree_sparse(
-                x, Ve_total, Vh_total, m_e, m_h, N, pas, V_coul,
-                lvl_e=j, lvl_h=j,   # On vise la paire (j, j)
-                phi_e_guess=phi_ref_e,
-                phi_h_guess=phi_ref_h,
-                toler=1e-4
-            )
-
-            overlapHart[j, i] = E_hart
-
-
-            ov_e = np.sum(phi_e_hart * phi_ref_e) * pas
-            ov_h = np.sum(phi_h_hart * phi_ref_h) * pas
+            # Calculer l'élément d'interaction V_ij
+            V_element = 0.0
             
-
-            overlapHart[j, i] = (ov_e * ov_h)**2
-    return F_vals, energiesHart, energiesCI, overlapHart, overlapCI
+            # Double somme sur les positions discrètes
+            for k in range(N):      # position électron
+                for l in range(N):  # position trou
+                    psi_e_i = wavefunc_e[k, n_e_i]
+                    psi_h_i = wavefunc_h[l, n_h_i]
+                    psi_e_j = wavefunc_e[k, n_e_j]
+                    psi_h_j = wavefunc_h[l, n_h_j]
+                    
+                    V_element += psi_e_i * psi_h_i * V_coul[k, l] * psi_e_j * psi_h_j * pas * pas
+            
+            H_CI[i, j] += V_element
+            
+            print(f"H[{i},{j}] = {H_CI[i, j]:.2f} meV", end=" | ")
+        print()
+    
+    energies_CI, eigenvectors_CI = np.linalg.eigh(H_CI)
+    
+    print(f"\nÉnergies CI (avec interaction): {energies_CI}")
+    print(f"État fondamental CI: {eigenvectors_CI[:, 0]}")
+    
+    # Calculer l'énergie de liaison excitonique
+    E_non_inter = listEnergies_e[0] + listEnergies_h[0]
+    E_binding = energies_CI[0] - E_non_inter
+    print(f"\nÉnergie de liaison: {E_binding:.2f} meV")
+    
+    return energies_CI, eigenvectors_CI, wavefunc_e, wavefunc_h
+    
 
 #-----------------Main-------------------------------
-
 x = np.linspace(-L/2, L/2, num=N)
 m = makeMasse("multi-carre", x, [geometrie_puits, m_puit_e, m_ext_e])
 
+gap = makeGap(x, [gap_in])
+
+dist = np.abs(np.subtract.outer(x, x)) 
+V_coul = -e2_eps / np.sqrt(dist**2 + a_coulomb**2)   
 
 V_boite = makePotentiel("multi-carre", x, geometrie_puits)
+Vstark  = makePotentiel("stark", x, F_val)
 
 m_e = makeMasse("multi-carre", x, [geometrie_puits, m_puit_e, m_ext_e])
 
 m_h = makeMasse("multi-carre", x, [geometrie_puits, m_puit_h, m_ext_h])
 
+F_vals = np.linspace(-6, 6, 800)
+
+num_niveaux = 2
+energies_stockage = np.zeros((len(F_vals), num_niveaux))
+gaps = np.zeros(len(F_vals))
+
+energies_E0 = []
+energies_E1 = []
+energies_E2 = []
+
+energies_E0_e = []
+energies_E1_e = []
+energies_E2_e = []
+
+energies_E0_h = []
+energies_E1_h = []
+energies_E2_h = []
+
+overlap = []
+phi_e_prec = None
+phi_h_prec = None
+
+guess_e_1 = np.zeros(N) 
+guess_h_1 = np.zeros(N)
+
+guess_e_2 = np.zeros(N) 
+guess_h_2 = np.zeros(N)
+
+premier_tour = True
+
+
+plt.figure(figsize=(10, 8))
+plt.title("Points de resonance de l'exciton")
+
+V_boite = makePotentiel("multi-carre", x, geometrie_puits)
+
+configInteraction(x, V_boite, V_boite, m_e, m_h, N, pas, V_coul, lvl_e=2, lvl_h=2)
+
 
 t0_n = time.time()
+for i, F in enumerate(F_vals):
 
-F_vals, energiesHart, energiesCI, overlapHart, overlapCI = applyField(
-    x=x, m=None, 
-    lowPotential=-6, highPotential=6, discretePotential=800, 
-    Ve=V_boite, Vh=V_boite, m_e=m_e, m_h=m_h, energyLVL=3)
+    V_boite = makePotentiel("multi-carre", x, geometrie_puits)
+    Vstark_e  = makePotentiel("stark", x, F)
+    Ve_init = V_boite + Vstark_e + gap
+    Vstark_h  = makePotentiel("stark", x, -1*F)
+    Vh_init = V_boite + Vstark_h
+    
+        
+    top_h, middle_h, bottom_h = makeSparseHamiltonien(Vh_init, masses=m_h, N=N, pas=pas, bdd=True)
+    top_e, middle_e, bottom_e = makeSparseHamiltonien(Ve_init, masses=m_e, N=N, pas=pas, bdd=True)
+    
+    He = diags([top_e, middle_e, bottom_e], [1, 0, -1], format='csr')
+    listEnergies_e, wavefunc_e = eigsh(He, k=3, which='SA', tol = 1e-4)
+    
+    Hh = diags([top_h, middle_h, bottom_h], [1, 0, -1], format='csr')
+    listEnergies_h, wavefunc_h = eigsh(Hh, k=3, which='SA', tol = 1e-4)
+    
+    energies_E0_e.append(listEnergies_e[0])
+    energies_E1_e.append(listEnergies_e[1])
+    energies_E2_e.append(listEnergies_e[2])
+    
+    energies_E0_h.append(listEnergies_h[0])
+    energies_E1_h.append(listEnergies_h[1])   
+    energies_E2_h.append(listEnergies_h[2])
 
+    E_exciton_0, _, _, phi_e_out_1, phi_h_out_1, _, _, recouvrement = hartree_sparse(
+            x, Ve_init, Vh_init, m_e, m_h, N, pas, V_coul, 
+            lvl_e=0, lvl_h=0, jacobi=True, maxi = 500, recouvrement_hart=True)
+    energies_E0.append(E_exciton_0)  
+    overlap.append(recouvrement)
+    
+    E_exciton_1, _, _, phi_e_out_2, phi_h_out_2, _, _, _ = hartree_sparse(
+        x, Ve_init, Vh_init, m_e, m_h, N, pas, V_coul,
+        lvl_e=0, lvl_h=1, jacobi=True, maxi = 500)
+    
+    energies_E1.append(E_exciton_1)
+    
+    E_exciton_2, _, _, phi_e_out_3, phi_h_out_3, _, _, _ = hartree_sparse(
+        x, Ve_init, Vh_init, m_e, m_h, N, pas, V_coul,
+        lvl_e=1, lvl_h=0, jacobi=True, maxi = 500)
+    
+    energies_E2.append(E_exciton_2)
+    
+    guess_e_1 = phi_e_out_1
+    guess_h_1 = phi_h_out_1
+    
+    guess_e_2 = phi_e_out_2
+    guess_h_2 = phi_h_out_2
+    
+    premier_tour = False
 t1_n = time.time()
-print(f"Temps écoulé {t1_n - t0_n}")
-
-
-plt.figure(figsize=(10, 8))
-plt.title("Resonnance avec CI")
-for i in range(3):
-    plt.plot(F_vals, energiesCI[i,:] , marker='.')
+plt.plot(F_vals, energies_E0, label="Fondamental (e0-h0)", color='blue', marker='.')
+plt.plot(F_vals, energies_E1, label="1er Excité (e0-h1)", color='red', marker='.')
+plt.plot(F_vals, energies_E2, label="2nd Excité (e1-h0)", color='green', marker='.')
 
 plt.xlabel("Champ électrique F")
 plt.ylabel("Énergie totale de l'exciton (meV)")
+plt.legend()
 plt.grid(True, alpha=0.3)
 plt.show()
 
 plt.figure(figsize=(10, 8))
-plt.title("Resonnance avec Hartree")
-for i in range(3):
-    plt.plot(F_vals, energiesHart[i,:] , marker='.')
-
-plt.xlabel("Champ électrique F")
-plt.ylabel("Énergie totale de l'exciton (meV)")
-plt.grid(True, alpha=0.3)
-plt.show()
-
-
-plt.figure(figsize=(10, 8))
-plt.title("Overlap pour les Deux méthodes")
-for i in range(3):
-    plt.plot(F_vals, overlapHart[i, :], '-', label=f'Recouv e-h Hartree {i}')
-    plt.plot(F_vals, overlapCI[i, :], '--', label=f'Projection CI {i}')
-
+plt.title("Recouvrement de l'Exciton")
+plt.plot(F_vals, overlap, label="Recouvrement", color='blue', marker='.')
 plt.xlabel("Champ électrique F")
 plt.ylabel("Recouvrement de l'exciton")
 plt.legend()
@@ -832,7 +588,6 @@ plt.grid(True, alpha=0.3)
 plt.show()
 
 
-"""
 print(t1_n - t0_n)
 
 plt.figure(figsize=(10, 8))
@@ -858,7 +613,9 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 plt.show()
 
-"""
+
+
+
 
 
 
