@@ -5,7 +5,7 @@
 ![SciPy](https://img.shields.io/badge/SciPy-1.10%2B-red) 
 ![Numba](https://img.shields.io/badge/Numba-JIT-orange)
 
-Academic project by **Gendronneau Maël**.
+Researsh project by **Gendronneau Maël**.
 
 ## Project Overview
 
