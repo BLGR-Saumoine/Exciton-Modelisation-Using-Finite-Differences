@@ -501,6 +501,83 @@ def hartree_sparse(
 
 
 def configInteraction(
+        x, Ve, Vh, m_e, m_h, N, Ne, Nh, pas, V_coul, lvl_e = 0, lvl_h = 0, 
+        toler = 1e-4, lvl_exciton= 0, matriciel = True):
+
+    He = diags(makeSparseHamiltonien(Ve, masses=m_e, N=N, pas=pas, bdd=True), [1, 0, -1], format='csr')
+    listEnergies_e, wavefunc_e = eigsh(He, k=lvl_e + 1, which='SA', tol = toler)
+    
+    Hh = diags(makeSparseHamiltonien(Vh, masses=m_h, N=N, pas=pas, bdd=True), [1, 0, -1], format='csr')
+    listEnergies_h, wavefunc_h = eigsh(Hh, k=lvl_h + 1, which='SA', tol = toler)
+    
+    # Normalisation
+    for i in range(lvl_e) :
+        wavefunc_e[:, i] /= np.sqrt(np.sum(wavefunc_e[:, i]**2) * pas)
+    for i in range(lvl_h) :
+        wavefunc_h[:, i] /= np.sqrt(np.sum(wavefunc_h[:, i]**2) * pas)
+    
+    
+    H_CI = np.zeros((lvl_e * lvl_h, lvl_e * lvl_h))
+    
+    configs = []
+    
+    for i in range(lvl_e):
+        for j in range(lvl_h):
+            configs.append((i,j))
+    # [(0,0), (0,1), (0,2), (1,0), (1,1), (1,2), (2,0), (2,1), (2,2)]
+    if matriciel :
+        for i in range(len(configs)):
+            n_e_i, n_h_i = configs[i]
+            for j in range(len(configs)):
+                n_e_j, n_h_j = configs[j]
+                
+                if i == j:
+                    H_CI[i, j] = listEnergies_e[n_e_i] + listEnergies_h[n_h_i]
+                
+                V_element = ((wavefunc_e[:, n_e_i] * wavefunc_e[:, n_e_j]) @ V_coul) @ (wavefunc_h[:, n_h_j] * wavefunc_h[:, n_h_i]) * pas**2
+                
+                H_CI[i, j] += V_element
+                
+    else :
+        for i in range(len(configs)):
+            n_e_i, n_h_i = configs[i]
+            for j in range(len(configs)):
+                n_e_j, n_h_j = configs[j]
+                
+                if i == j:
+                    H_CI[i, j] = listEnergies_e[n_e_i] + listEnergies_h[n_h_i]
+        
+                V_element = 0.0
+                
+                # Double somme sur les positions discrètes (je vais faire le matriciel sous peu)
+                for k in range(N):      # position électron
+                    for l in range(N):  # position trou
+                        psi_e_i = wavefunc_e[k, n_e_i]
+                        psi_h_i = wavefunc_h[l, n_h_i]
+                        psi_e_j = wavefunc_e[k, n_e_j]
+                        psi_h_j = wavefunc_h[l, n_h_j]
+                        
+                        V_element += psi_e_i * psi_h_i * V_coul[k, l] * psi_e_j * psi_h_j * pas * pas
+                
+                H_CI[i, j] += V_element
+                
+    
+    energies_CI, eigenvectors_CI = eigh(H_CI)
+    
+    C_coeffs = eigenvectors_CI[:, lvl_exciton] 
+    
+    Psi_exciton_2D = np.zeros((N, N))
+    
+    for k in range(len(configs)):
+        n_e, n_h = configs[k]
+        coef = C_coeffs[k]
+
+        Psi_exciton_2D += coef * np.outer(wavefunc_e[:, n_e], wavefunc_h[:, n_h])
+    
+    return energies_CI, eigenvectors_CI, wavefunc_e, wavefunc_h, Psi_exciton_2D
+
+
+def configInteractionMulti(
         x, Ve, Vh, m_e, m_h, N, pas, V_coul, lvl_e = 0, lvl_h = 0, 
         toler = 1e-4, lvl_exciton= 0, matriciel = True):
     """
@@ -620,6 +697,9 @@ def configInteraction(
         Psi_exciton_2D += coef * np.outer(wavefunc_e[:, n_e], wavefunc_h[:, n_h])
     
     return energies_CI, eigenvectors_CI, wavefunc_e, wavefunc_h, Psi_exciton_2D
+
+
+
     
 #----------------------------------------------------------------------------------
 #Je sais pas comment l'appeler mais c'est ce qui va me serir à calculer l'expression de mes résusltats sur la base des états propres
@@ -715,7 +795,7 @@ def applyField(x, m, lowPotential, highPotential, discretePotential, Ve, Vh, m_e
         Matrice des projections (overlap) entre l'état CI n°j et le produit des états libres n°j.
     """
     
-    overlapHart = np.zeros((energyLVL, discretePotential))
+    energiesHart = np.zeros((energyLVL, discretePotential))
     energiesCI = np.zeros((energyLVL, discretePotential))
 
     dist = np.abs(np.subtract.outer(x, x)) 
@@ -750,28 +830,35 @@ def applyField(x, m, lowPotential, highPotential, discretePotential, Ve, Vh, m_e
             coeff = Vec_CI[linear_index, j]
             overlapCI[j, i] = coeff**2
             
-        for j in range(energyLVL):
+        target_configs = [(0, 0), (0, 1), (1, 0)]
+        last_phi_e = [None] * energyLVL
+        last_phi_h = [None] * energyLVL
+        for j, (le, lh) in enumerate(target_configs):
+            if j >= energyLVL: break
 
-            phi_ref_e = base_e[:, j]
-            phi_ref_h = base_h[:, j]
-
+            # Si c'est le premier point (i==0), on utilise la base libre
+            # Sinon, on utilise la fonction d'onde du point précédent (F-1)
+            guess_e = last_phi_e[j] if i > 0 else base_e[:, le]
+            guess_h = last_phi_h[j] if i > 0 else base_h[:, lh]
 
             E_hart, _, _, phi_e_hart, phi_h_hart, _, _, _ = hartree_sparse(
                 x, Ve_total, Vh_total, m_e, m_h, N, pas, V_coul,
-                lvl_e=j, lvl_h=j,   # On vise la paire (j, j)
-                phi_e_guess=phi_ref_e,
-                phi_h_guess=phi_ref_h,
+                lvl_e=le, lvl_h=lh, 
+                phi_e_guess=guess_e, # Suivi d'état activé ici
+                phi_h_guess=guess_h,
                 toler=1e-4
             )
 
-            overlapHart[j, i] = E_hart
-
-
-            ov_e = np.sum(phi_e_hart * phi_ref_e) * pas
-            ov_h = np.sum(phi_h_hart * phi_ref_h) * pas
+            # Mise à jour de la mémoire pour le prochain champ F
+            energiesHart[j, i] = E_hart
+            last_phi_e[j] = phi_e_hart
+            last_phi_h[j] = phi_h_hart
             
-
+            # Recouvrement (projection sur la base libre pour voir l'évolution)
+            ov_e = np.sum(phi_e_hart * base_e[:, le]) * pas
+            ov_h = np.sum(phi_h_hart * base_h[:, lh]) * pas
             overlapHart[j, i] = (ov_e * ov_h)**2
+            
     return F_vals, energiesHart, energiesCI, overlapHart, overlapCI
 
 #-----------------Main-------------------------------
