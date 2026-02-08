@@ -19,7 +19,7 @@ import time
 hbar = 8.729
 massExciton = 1
 L = 40 #Distance dans la boite
-N = 500 #500 points pour le moment
+N = 1000 #500 points pour le moment
 pas = L/(N-1)
 numLVL = 5 #Nombre de niveaux d'énergies
 
@@ -577,128 +577,79 @@ def configInteraction(
     return energies_CI, eigenvectors_CI, wavefunc_e, wavefunc_h, Psi_exciton_2D
 
 
-def configInteractionMulti(
-        x, Ve, Vh, m_e, m_h, N, pas, V_coul, lvl_e = 0, lvl_h = 0, 
-        toler = 1e-4, lvl_exciton= 0, matriciel = True):
-    """
-    Applique la configuration Interaction à un électron et un trou
+def configInteractionTrionPlus(
+        x, Ve, Vh, m_e, m_h, N, pas, V_coul, lvl_e1 = 4, lvl_e2 = 4, lvl_h = 4, 
+        toler = 1e-4, lvl_exciton= 0, wavefunc = True):
 
-    Parameters
-    ----------
-    x : numpy.ndarray
-        linspace sur lequel on discrétise les positions.
-    Ve : numpy.ndarray
-        Potentiel créé par la géométrie de la boite de l'éléctron (potentiel de base, on ne considère pas encore les interactions coulombiennes).
-    Vh : numpy.ndarray
-        Potentiel créé par la géométrie de la boite du trou.
-    m_e : numpy.ndarray
-        Masse effective de l'électron.
-    m_h : numpy.ndarray
-        Masse effective du trou.
-    N : int
-        Nombre de points dans le linspace x, explicité ici pour ne pas devoir redémarré le kernel en cas de changement de pas (utile quand j'utilise numba).
-    pas : float
-        Écart entre les points dans le linspace x, explicité ici pour ne pas devoir redémarré le kernel en cas de changement de pas.
-    V_coul : numpy.ndarray
-        Matrice d'interaction coulombienne.
-    lvl_e : int, optional
-        indique le niveau d'énergie de l'electron sur lequel on va travailler. The default is 0.
-    lvl_h : int, optional
-        indique le niveau d'énergie du trou sur lequel on va travailler. The default is 0.
-    toler : float, optional
-        utilisé ici pour accélerer la diagonilasion de la matrice creuse. The default is 1e-4.
-    lvl_exciton : int, optional
-        permet d'étudier un état précis de l'exction. The default is 0.
-    matriciel : bool, optional
-        boolen pour voir si j'utilise le produit matriciel ou pas dans mon calcul. The default is True.
 
-    Returns
-    -------
-    energies_CI : numpy.ndarray
-        Les valeurs propres (énergies) de l'hamiltonien CI.
-    eigenvectors_CI : numpy.ndarray
-        Les vecteurs propres (coefficients) de l'hamiltonien CI.
-    wavefunc_e : numpy.ndarray
-        Les fonctions d'onde de base de l'électron.
-    wavefunc_h : numpy.ndarray
-        Les fonctions d'onde de base du trou.
-    Psi_exciton_2D : numpy.ndarray
-        La fonction d'onde de l'exciton reconstruite en 2D (x_electron, x_trou).
-    """
-
-    He = diags(makeSparseHamiltonien(Ve, masses=m_e, N=N, pas=pas, bdd=True), [1, 0, -1], format='csr')
-    listEnergies_e, wavefunc_e = eigsh(He, k=lvl_e + 1, which='SA', tol = toler)
+    He1 = diags(makeSparseHamiltonien(Ve, masses=m_e, N=N, pas=pas, bdd=True), [1, 0, -1], format='csr')
+    listEnergies_e1, wavefunc_e1 = eigsh(He1, k=lvl_e1 + 1, which='SA', tol = toler)
+    
+    He2 = diags(makeSparseHamiltonien(Ve, masses=m_e, N=N, pas=pas, bdd=True), [1, 0, -1], format='csr')
+    listEnergies_e2, wavefunc_e2 = eigsh(He2, k=lvl_e2 + 1, which='SA', tol = toler)
     
     Hh = diags(makeSparseHamiltonien(Vh, masses=m_h, N=N, pas=pas, bdd=True), [1, 0, -1], format='csr')
     listEnergies_h, wavefunc_h = eigsh(Hh, k=lvl_h + 1, which='SA', tol = toler)
     
     # Normalisation
-    for i in range(lvl_e) :
-        wavefunc_e[:, i] /= np.sqrt(np.sum(wavefunc_e[:, i]**2) * pas)
+    for i in range(lvl_e1) :
+        wavefunc_e1[:, i] /= np.sqrt(np.sum(wavefunc_e1[:, i]**2) * pas)
+    for i in range(lvl_e2) :
+        wavefunc_e2[:, i] /= np.sqrt(np.sum(wavefunc_e2[:, i]**2) * pas)
     for i in range(lvl_h) :
         wavefunc_h[:, i] /= np.sqrt(np.sum(wavefunc_h[:, i]**2) * pas)
     
     
-    H_CI = np.zeros((lvl_e * lvl_h, lvl_e * lvl_h))
+    H_CI = np.zeros((lvl_e1 * lvl_e2 * lvl_h, lvl_e1 * lvl_e2 * lvl_h))
     
     configs = []
     
-    for i in range(lvl_e):
-        for j in range(lvl_h):
-            configs.append((i,j))
-    # [(0,0), (0,1), (0,2), (1,0), (1,1), (1,2), (2,0), (2,1), (2,2)]
-    if matriciel :
-        for i in range(len(configs)):
-            n_e_i, n_h_i = configs[i]
-            for j in range(len(configs)):
-                n_e_j, n_h_j = configs[j]
+    for i in range(lvl_e1):
+        for j in range(lvl_e2):
+            for k in range(lvl_h):
+                configs.append((i,j,k))
+            
+    # Ici vu qu'on a 3 particules ça ressemble plus à avec e1 e2 h
+    #[(0,0,0), (0,0,1), (0,0,2), (0,1,0), (0,1,1), (0,1,2), (0,2,0), (0,2,1), (0,2,2), (1,0,0) etc...]
+    
+
+    
+    for m in range(len(configs)):
+        i, j, k = configs[m]
+        for n in range(len(configs)):
+            ip, jp, kp = configs[n]
+            
+            V_element = 0
+            
+            if i == ip and j == jp and k ==kp :
+                H_CI[m, n] = listEnergies_e1[i] + listEnergies_e2[j] + listEnergies_h[k]
+            
+            if i == ip :
+                V_element += ((wavefunc_e2[:, j] * wavefunc_e2[:, jp]) @ V_coul) @ (wavefunc_h[:, k] * wavefunc_h[:, kp]) * pas**2
                 
-                if i == j:
-                    H_CI[i, j] = listEnergies_e[n_e_i] + listEnergies_h[n_h_i]
+            if j == jp :
+                V_element += ((wavefunc_e1[:, i] * wavefunc_e1[:, ip]) @ V_coul) @ (wavefunc_h[:, k] * wavefunc_h[:, kp]) * pas**2
                 
-                V_element = ((wavefunc_e[:, n_e_i] * wavefunc_e[:, n_e_j]) @ V_coul) @ (wavefunc_h[:, n_h_j] * wavefunc_h[:, n_h_i]) * pas**2
-                
-                H_CI[i, j] += V_element
-                
-    else :
-        for i in range(len(configs)):
-            n_e_i, n_h_i = configs[i]
-            for j in range(len(configs)):
-                n_e_j, n_h_j = configs[j]
-                
-                if i == j:
-                    H_CI[i, j] = listEnergies_e[n_e_i] + listEnergies_h[n_h_i]
-        
-                V_element = 0.0
-                
-                # Double somme sur les positions discrètes (je vais faire le matriciel sous peu)
-                for k in range(N):      # position électron
-                    for l in range(N):  # position trou
-                        psi_e_i = wavefunc_e[k, n_e_i]
-                        psi_h_i = wavefunc_h[l, n_h_i]
-                        psi_e_j = wavefunc_e[k, n_e_j]
-                        psi_h_j = wavefunc_h[l, n_h_j]
-                        
-                        V_element += psi_e_i * psi_h_i * V_coul[k, l] * psi_e_j * psi_h_j * pas * pas
-                
-                H_CI[i, j] += V_element
+            if k == kp :
+                V_element += ((wavefunc_e1[:, i] * wavefunc_e1[:, ip]) @ (-1 * V_coul)) @ (wavefunc_e2[:, j] * wavefunc_e2[:, jp]) * pas**2
+            
+            
+            H_CI[m, n] += V_element
                 
     
     energies_CI, eigenvectors_CI = eigh(H_CI)
     
     C_coeffs = eigenvectors_CI[:, lvl_exciton] 
     
-    Psi_exciton_2D = np.zeros((N, N))
-    
-    for k in range(len(configs)):
-        n_e, n_h = configs[k]
-        coef = C_coeffs[k]
+    Psi_trion_3D = np.zeros((N, N, N))
+    if wavefunc :
+        for m in range(len(configs)):
+            i,j,k = configs[m]
+            coef = C_coeffs[m]
+            
+            Psi_trion_3D += coef * np.multiply.outer(np.multiply.outer(wavefunc_e1[:, i], wavefunc_e2[:, j]), wavefunc_h[:, k])
 
-        Psi_exciton_2D += coef * np.outer(wavefunc_e[:, n_e], wavefunc_h[:, n_h])
-    
-    return energies_CI, eigenvectors_CI, wavefunc_e, wavefunc_h, Psi_exciton_2D
-
-
+    return energies_CI, eigenvectors_CI, wavefunc_e1, wavefunc_e2, wavefunc_h, Psi_trion_3D
 
     
 #----------------------------------------------------------------------------------
@@ -861,6 +812,37 @@ def applyField(x, m, lowPotential, highPotential, discretePotential, Ve, Vh, m_e
             
     return F_vals, energiesHart, energiesCI, overlapHart, overlapCI
 
+
+def generalApplyField(x, lowPotential, highPotential, discretePotential, Ve, Vh, m_e, m_h, energyLVL, ) :
+    
+    energiesCI = np.zeros((energyLVL, discretePotential))
+
+    dist = np.abs(np.subtract.outer(x, x)) 
+    V_coul = -e2_eps / np.sqrt(dist**2 + a_coulomb**2)   
+    #On initialise le potentiel de Coulomb en chaque point, on n'a pas encore appliqué la fonction d'onde 
+    
+    
+    F_vals = np.linspace(lowPotential, highPotential, discretePotential)
+    gap = makeGap(x, [gap_in])
+    
+    for i, F in enumerate(F_vals):
+        Vstark_e  = makePotentiel("stark", x, F)
+        Vstark_h  = makePotentiel("stark", x, -1*F)
+        
+        Ve_total = Ve + Vstark_e + gap
+        Vh_total = Vh + Vstark_h
+        #On recrée les potentiels du trou et de l'électron avec le nouveau champs électrique
+        
+        E_CI, eigenvectors_CI, wavefunc_e1, wavefunc_e2, wavefunc_h, Psi_exciton_2D = configInteractionTrionPlus(
+            x, Ve_total, Vh_total, m_e, m_h, N, pas, V_coul, wavefunc = False)
+
+        energiesCI[:, i] = E_CI[:energyLVL]
+
+    
+    return energiesCI, F_vals
+
+
+
 #-----------------Main-------------------------------
 
 x = np.linspace(-L/2, L/2, num=N)
@@ -873,7 +855,11 @@ m_e = makeMasse("multi-carre", x, [geometrie_puits, m_puit_e, m_ext_e])
 
 m_h = makeMasse("multi-carre", x, [geometrie_puits, m_puit_h, m_ext_h])
 
+dist = np.abs(np.subtract.outer(x, x)) 
+V_coul = -e2_eps / np.sqrt(dist**2 + a_coulomb**2)   
 
+
+"""
 t0_n = time.time()
 
 F_vals, energiesHart, energiesCI, overlapHart, overlapCI = applyField(
@@ -917,7 +903,33 @@ plt.ylabel("Recouvrement de l'exciton")
 plt.legend()
 plt.grid(True, alpha=0.3)
 plt.show()
+"""
 
+Vstark_e  = makePotentiel("stark", x, 0)
+Vstark_h  = makePotentiel("stark", x, 0)
+gap = makeGap(x, [gap_in])
+
+Ve = V_boite + Vstark_e + gap
+Vh = V_boite + Vstark_h
+
+
+t0_n = time.time()
+
+energiesCI, F_vals = generalApplyField(x, 0, 6, 1200, Ve, Vh, m_e, m_h, energyLVL = 7)
+
+t1_n = time.time()
+
+print(t1_n - t0_n)
+
+plt.figure(figsize=(10, 8))
+plt.title("Resonnance avec CI")
+for i in range(5):
+    plt.plot(F_vals, energiesCI[i,:] , marker='.')
+
+plt.xlabel("Champ électrique F")
+plt.ylabel("Énergie totale de l'exciton (meV)")
+plt.grid(True, alpha=0.3)
+plt.show()
 
 """
 print(t1_n - t0_n)
