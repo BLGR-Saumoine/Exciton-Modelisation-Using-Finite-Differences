@@ -401,7 +401,7 @@ def configInteraction(
         maxi = 5000, toler = 1e-4, jacobi = True, phi_e_guess=None,
         phi_h_guess=None, alpha = 1, recouvrement_hart = False):
     """
-    fuck
+    
     """
 
     He = diags(makeSparseHamiltonien(Ve, masses=m_e, N=N, pas=pas, bdd=True), [1, 0, -1], format='csr')
