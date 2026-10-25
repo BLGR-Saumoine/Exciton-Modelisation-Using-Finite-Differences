@@ -59,11 +59,25 @@ toler = 1e-4
 
 def makePotentiel2D(type2Boite, x, y, constante):
     """
-    Génère un vecteur potentiel V en fonction du type demandé.
-    x : vecteur de position
-    y : second vecteur de position
-    constante : dictionnaire ou valeur unique selon le besoin
+    Génère une matrice 2D représentant le potentiel V sur la grille définie par x et y.
+
+    Parameters
+    ----------
+    type2Boite : str
+        Type de potentiel à générer ("coulomb", "carre", "harmonique", "stark2D", "multi-carre", etc.).
+    x : numpy.ndarray
+        Vecteur 1D des positions selon l'axe x.
+    y : numpy.ndarray
+        Vecteur 1D des positions selon l'axe y.
+    constante : float, list or tuple
+        Paramètres physiques dépendants du type de potentiel (ex: [a, e_eps] pour coulomb, ou la liste des puits pour multi-carre).
+
+    Returns
+    -------
+    V : numpy.ndarray
+        Matrice 2D (N_y, N_x) contenant les valeurs du potentiel pour chaque point de la grille.
     """
+    
     #print("Potentiel de la forme : " + type2Boite)
     #print("\n")
     X, Y = np.meshgrid(x, y)
@@ -114,9 +128,93 @@ def makePotentiel2D(type2Boite, x, y, constante):
     else:
         return np.zeros_like(X)
 
+#========================Initialisateur des masses pour BDD========================
+def makeMasse2D(type2Boite, x, y, constante):
+    """
+    Génère une matrice 2D représentant la masse sur la grille définie par x et y.
+
+    Parameters
+    ----------
+    type2Boite : str
+        Type de potentiel à générer ("coulomb", "carre", "harmonique", "stark2D", "multi-carre", etc.).
+    x : numpy.ndarray
+        Vecteur 1D des positions selon l'axe x.
+    y : numpy.ndarray
+        Vecteur 1D des positions selon l'axe y.
+    constante : float, list or tuple
+        Paramètres physiques dépendants du type de masse (ex: [a, e_eps] pour coulomb, ou la liste des puits pour multi-carre).
+
+    Returns
+    -------
+    masses : numpy.ndarray
+        Matrice 2D (N_y, N_x) contenant les valeurs du potentiel pour chaque point de la grille.
+    """
+
+    X, Y = np.meshgrid(x, y)
+    
+    if type2Boite == "carre":
+        # constante = [largeur, longueur, masseInt, masseExt]
+        
+        W, L, masseInt, masseExt = constante
+        in_the_well = (np.abs(X) < W/2) & (np.abs(Y) < L/2)
+        
+        return np.where(in_the_well, masseInt, masseExt)
+    
+    elif type2Boite == "multi-carre":
+        """
+        Penser à implémenter une vérification pour que les puits ne se chevauchent pas si leur centre est trop proche et que leur largeur est trop grande
+        """
+        # constante = [geometrie, masseInt, masseExt] 
+        # geometrie = [(centre1_x, centre1_y, largeur1, longueur1, profondeur1),(centre2_x, centre2_y, largeur2, longueur2, profondeur2),...]
+        geometrie, masseInt, masseExt = constante
+        
+        V = np.ones_like(X) * masseExt
+        # V0 est inutile ici mais si je le mets pas ça peut crash
+        for centre_x, centre_y, W, L, V0 in geometrie :
+            in_the_well = (X > (centre_x - W/2)) & (X < (centre_x + W/2)) & (Y < (centre_y + L/2)) & (Y > (centre_y - L/2)) 
+            V[in_the_well] = masseInt
+        return V
+    
+    else:
+        return np.ones_like(X)
+
+
 #================ Hamiltonien numba + sparse matrix 2D====================
-@njit 
+
 def makeSparseHamiltonien2D(V, masses, N_x, N_y, pasX, pasY, bdd = False) :
+    """
+    Construit les diagonales de l'Hamiltonien 2D en utilisant une discrétisation par différences finies.
+
+    Parameters
+    ----------
+    V : numpy.ndarray
+        Matrice 2D du potentiel.
+    masses : float or numpy.ndarray
+        Masse effective de la particule (actuellement massExciton est utilisé globalement dans la fonction).
+    N_x : int
+        Nombre de points de discrétisation selon l'axe x.
+    N_y : int
+        Nombre de points de discrétisation selon l'axe y.
+    pasX : float
+        Pas de discrétisation spatial sur l'axe x.
+    pasY : float
+        Pas de discrétisation spatial sur l'axe y.
+    bdd : bool, optional
+        Flag pour activer des conditions aux limites ou des masses variables (non implémenté pour le moment). The default is False.
+
+    Returns
+    -------
+    bottom : numpy.ndarray
+        Diagonale inférieure d'ordre -N_x (couplage selon y).
+    left : numpy.ndarray
+        Diagonale inférieure d'ordre -1 (couplage selon x).
+    middle : numpy.ndarray
+        Diagonale principale contenant le potentiel et l'énergie cinétique propre.
+    right : numpy.ndarray
+        Diagonale supérieure d'ordre 1 (couplage selon x).
+    top : numpy.ndarray
+        Diagonale supérieure d'ordre N_x (couplage selon y).
+    """
     
     N_tot = N_x * N_y
     middle = V.flatten().astype(np.float64)
@@ -125,22 +223,37 @@ def makeSparseHamiltonien2D(V, masses, N_x, N_y, pasX, pasY, bdd = False) :
     
     left = np.zeros((N_tot - 1), dtype=np.float64)
     right = np.zeros((N_tot - 1), dtype=np.float64)
-    """
+    
     if bdd :
-        for i in range(N-1) :
-            
-            m_avg = (masses[i] + masses[i+1]) / 2.0
-            val_t = - (hbar**2 / (2 * pas**2)) * (1.0 / m_avg)
+            for j in range(N_y):
+                for i in range(N_x - 1):
+                    k = j * N_x + i
+                    
+                    m_avg_x = (masses[j, i] + masses[j, i+1]) / 2.0
+                    tx = -hbar**2 / (2 * m_avg_x * pasX**2)
+                    
+                    right[k] = tx
+                    left[k] = tx
+                    
+                    middle[k] -= tx
+                    middle[k+1] -= tx
+    
+            for j in range(N_y - 1):
+                for i in range(N_x):
+                    k = j * N_x + i
+                    k_top = k + N_x 
+                    
+                    m_avg_y = (masses[j, i] + masses[j+1, i]) / 2.0
+                    ty = -hbar**2 / (2 * m_avg_y * pasY**2)
+                    
 
-            middle[i] -= val_t
-            middle[i+1] -= val_t
-            top[i] = val_t
-            bottom[i] = val_t
-        middle[N-1] -= val_t
-        """
-    if False :
-        print("temp")
-        
+                    top[k] = ty
+                    bottom[k] = ty
+                    
+
+                    middle[k] -= ty
+                    middle[k_top] -= ty
+                            
     else :
         
         tx = -hbar**2 / (2*massExciton*pasX**2)
@@ -149,7 +262,7 @@ def makeSparseHamiltonien2D(V, masses, N_x, N_y, pasX, pasY, bdd = False) :
         for i in range(N_tot - N_x) :
             
             if (i+1) % N_x == 0 :
-                left[i] = 0.0
+                left[i] = 0.0 
                 right[i] = 0.0
             else : 
                 left[i] = tx
@@ -173,6 +286,8 @@ def makeSparseHamiltonien2D(V, masses, N_x, N_y, pasX, pasY, bdd = False) :
         middle[N_x*N_y - 1] += -2*tx -2*ty
         
     return bottom, left, middle, right, top
+
+
 
 
 #----------------------Plot main---------------------
@@ -232,7 +347,7 @@ for i in range(numLVL):
     ax.set_aspect('equal')
 
 
-lvl_3D = 2
+lvl_3D = 5
 
 fig.colorbar(im, ax=axes.ravel().tolist(), label="Densité de probabilité |Psi|^2")
 
@@ -254,6 +369,86 @@ surf = ax.plot_surface(X, Y, psi_2D, linewidth=0, cmap = cm.viridis, antialiased
 fig.colorbar(surf, shrink=0.5, aspect=5)
 
 plt.show()
+
+
+
+
+
+
+
+
+
+
+
+masses_2D = makeMasse2D("multi-carre", x, y, [geometrie_puits, m_puit_e, m_ext_e])
+
+bottom, left, middle, right, top = makeSparseHamiltonien2D(V_2D, masses_2D, N_x, N_y, pas_x, pas_y, bdd=True)
+
+diag = [bottom, left, middle, right, top]
+offsets = [-N_x, -1, 0, 1, N_x]
+
+H_2D = diags(diag, offsets, format='csr')
+
+listEnergies, wavefunc = eigsh(H_2D, k=numLVL, which='SA', tol = toler)
+
+fig, axes = plt.subplots(1, numLVL, figsize=(4 * numLVL, 4))
+if numLVL == 1: axes = [axes] 
+
+x_plot = np.linspace(-L_x/2, L_x/2, N_x)
+y_plot = np.linspace(-L_y/2, L_y/2, N_y)
+X_plot, Y_plot = np.meshgrid(x_plot, y_plot) 
+
+for i in range(numLVL):
+
+    psi_1D = wavefunc[:, i]
+
+    psi_2D = psi_1D.reshape((N_y, N_x))
+    
+    density = np.abs(psi_2D)**2
+    
+    ax = axes[i]
+    im = ax.pcolormesh(X_plot, Y_plot, density, cmap='inferno', shading='auto')
+    
+    ax.set_title(f"État #{i}\nE = {listEnergies[i]:.2f} meV")
+    ax.set_xlabel("x (nm)")
+    if i == 0:
+        ax.set_ylabel("y (nm)")
+    else:
+        ax.set_yticks([]) 
+    
+    ax.set_aspect('equal')
+
+
+lvl_3D = 5
+
+fig.colorbar(im, ax=axes.ravel().tolist(), label="Densité de probabilité |Psi|^2")
+
+plt.suptitle(f"Fonctions d'onde dans le potentiel {geometrie_puits}", y=1.05)
+plt.show()
+
+
+fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+
+psi_1D = wavefunc[:, lvl_3D]
+
+psi_2D = np.abs(psi_1D.reshape((N_y, N_x)))**2
+
+surf = ax.plot_surface(X, Y, psi_2D, linewidth=0, cmap = cm.viridis, antialiased=False)
+
+
+
+# Add a color bar which maps values to colors.
+fig.colorbar(surf, shrink=0.5, aspect=5)
+
+plt.show()
+
+
+
+
+
+
+
+
 
 
 
