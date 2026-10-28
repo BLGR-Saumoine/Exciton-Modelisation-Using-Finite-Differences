@@ -26,7 +26,7 @@ class BaseBessel() :
         if maxVal >= acc :
             print(f"Matrice de Base Bessel Bizarre (Code BBB) | max = {maxVal}")
         else :
-            print("Matrice de Base Bessel pas Bizarre")
+            print(f"Matrice de Base Bessel pas Bizarre | max = {maxVal}")
 
     def verif_ortho(self, n_base)  :
 
