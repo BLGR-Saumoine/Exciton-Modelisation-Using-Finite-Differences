@@ -4,23 +4,41 @@ import math
 import utils
 
 class BaseBessel() :
-    def __init__(self, radius, n_base, n_point, m, acc = 1e-4):
+    def __init__(self, radius, n_base, n_point, m, mass, E_max = 100, acc = 1e-4):
+        """
+        """
 
         self.radius = radius
-        self.mass = m
+        self.mass = mass
+        self.m = m
 
         self.r = np.linspace(0, radius, num=n_point)
         self.dr = radius/(n_point-1)
+        for i in range(m) :
+            for j in range(n_base) :
+                self.zeroes = scipy.special.jn_zeros(i, n_base)
+                self.alpha = self.zeroes / radius
+                self.norm = 1/(math.sqrt(math.pi) * radius * abs(scipy.special.jv(i+1,self.zeroes)))
+                for type in ["cos", "sin"] :
+                    self.types.append(type)
+    
 
-        self.zeroes = scipy.special.jn_zeros(0, n_base)
+            
+
+            
+
+            self.E = utils.hbar**2 * self.zeroes ** 2 / (2*mass*radius**2)
+
+
+        self.zeroes = scipy.special.jn_zeros(m, n_base)
 
         self.alpha = self.zeroes / radius
 
-        self.norm = 1/(math.sqrt(math.pi) * radius * abs(scipy.special.jv(1,self.zeroes)))
+        self.norm = 1/(math.sqrt(math.pi) * radius * abs(scipy.special.jv(m+1,self.zeroes)))
 
-        self.E = utils.hbar**2 * self.zeroes ** 2 / (2*m*radius**2)
+        self.E = utils.hbar**2 * self.zeroes ** 2 / (2*mass*radius**2)
 
-        self.phi = self.norm[:,None] * scipy.special.jv(0,self.r[None,:] * self.alpha[:,None])
+        self.phi = self.norm[:,None] * scipy.special.jv(m,self.r[None,:] * self.alpha[:,None])
 
         maxVal = self.verif_ortho(n_base)
         if maxVal >= acc :
