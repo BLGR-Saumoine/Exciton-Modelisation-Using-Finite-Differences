@@ -1,5 +1,6 @@
 from Potentiel import Potentiel
 from BaseBessel import BaseBessel
+from utils import hbar
 import numpy as np
 from scipy.linalg import eigh
 import matplotlib.pyplot as plt
@@ -13,7 +14,7 @@ class Hamiltonien():
         self.base = baseBessel
         self.potentiel = potentiel
         self.E_max = E_max
-        self.V_r = self.potentiel.makePotentiel(baseBessel.r)
+        self.V_r, self.m_r = self.potentiel.makePotentiel(baseBessel.r)
         self.Vnm = self.build_V()
         self.Tnm = self.build_T()
         self.energies = None
@@ -21,10 +22,16 @@ class Hamiltonien():
         self.H = self.Tnm + self.Vnm
 
     def build_T(self):
-        return np.diag(self.base.E) 
+        #Maintenant on prend en compte la masse éffective
+        Aij = (self.base.phi_prime * (self.base.r / self.m_r * self.base.poids)[None,:]) @ self.base.phi_prime.T
+        r = self.base.r
+        r_sur = np.where(r > 0, r, 1)
+        w = np.where(r > 0, 1 / (self.m_r * r_sur), 0)
+        Bij = (self.base.phi * (w * self.base.poids)[None, :]) @ self.base.phi.T
+        return hbar**2 / 2 * (Aij + self.base.m[:, None]**2 * Bij) * self.base.angulaire
     
     def build_V(self) :
-        V_nm = (self.base.phi * (self.base.r[None,:] * self.V_r[None,:])) @ self.base.phi.T * self.base.angulaire * self.base.dr
+        V_nm = (self.base.phi * (self.base.r * self.V_r * self.base.poids)[None,:]) @ self.base.phi.T * self.base.angulaire
         return V_nm
 
     def solve(self) :

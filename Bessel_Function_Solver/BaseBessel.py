@@ -15,6 +15,8 @@ class BaseBessel() :
 
         self.r = np.linspace(0, radius, num=n_point)
         self.dr = radius/(n_point-1)
+        self.poids = np.full(n_point, self.dr)
+        self.poids[0] = self.poids[-1] = self.dr / 2 # poids dr/2 aux deux extrémités (trapèzes)
         self.zeroes = []
         self.m = []
         self.n = []
@@ -68,6 +70,7 @@ class BaseBessel() :
 
         self.E = utils.hbar**2 * self.zeroes ** 2 / (2*mass*radius**2)
         self.phi = self.norm[:,None] * scipy.special.jv(self.m[:,None],self.r[None,:] * self.alpha[:,None])
+        self.phi_prime = self.norm[:,None] * self.alpha[:,None] / 2 * (scipy.special.jv(self.m[:,None]-1,self.r[None,:] * self.alpha[:,None]) - scipy.special.jv(self.m[:,None]+1,self.r[None,:] * self.alpha[:,None]))
         self.getAngulaire()
 
         erreur_max, erreur_mse = self.verif_ortho()
@@ -85,7 +88,7 @@ class BaseBessel() :
         N = len(self.zeroes)
 
         # 1. Partie radiale : ∫ Φ_a Φ_b r dr, pour tous les couples (a, b)
-        radial = (self.phi * self.r[None, :]) @ self.phi.T * self.dr
+        radial = (self.phi * (self.r * self.poids)[None, :]) @ self.phi.T
 
         ortho = radial * self.angulaire
 
@@ -95,7 +98,7 @@ class BaseBessel() :
         return erreur_max, erreur_mse
 
     def getAngulaire(self) :
-        # 2. Partie angulaire : ∫ A_a A_b dθ, pour tous les couples (a, b)
+        # 2. Partie angulaire : ∫ A_a A_b dθ, pour tous les couples     (a, b)
         self.est_sin = np.array([t is np.sin for t in self.types])       # True si la fonction est en sin
         meme_m = self.m[:, None] == self.m[None, :]                   # True si m_a == m_b
         meme_type = self.est_sin[:, None] == self.est_sin[None, :]              # True si même type (cos/cos ou sin/sin)
