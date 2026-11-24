@@ -30,4 +30,4 @@ class Potentiel() :
             k = self.constantes
             return 0.5 * k * r**2, np.full_like(r, self.m_puit)
         else :
-            return np.zeros_like(r), np.full_like(r, self.m_puit) 
+            raise ValueError(f"Type de potentiel inconnu : {self.type2boite!r}")

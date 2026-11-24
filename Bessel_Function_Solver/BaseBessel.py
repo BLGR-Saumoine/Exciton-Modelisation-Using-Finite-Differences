@@ -4,14 +4,14 @@ import math
 import utils
 
 class BaseBessel() :
-    def __init__(self, radius, n_point, mass, E_cut, acc = 1e-4):
+    def __init__(self, radius, n_point, m_ref, E_cut, acc = 1e-4):
         """
         E_cut : Combien de fonctions on prends pour la base
         E_max : On ne montre pas les fonctions avec une énergie supérieurs à E_max il sera dans Hamiltonien mais je le précise ici
         """
 
         self.radius = radius
-        self.mass = mass
+        self.mass = m_ref
 
         self.r = np.linspace(0, radius, num=n_point)
         self.dr = radius/(n_point-1)
@@ -68,7 +68,7 @@ class BaseBessel() :
         area = np.where(self.m == 0, 1, np.sqrt(2))
         self.norm = area/(math.sqrt(math.pi) * radius * abs(scipy.special.jv(self.m + 1, self.zeroes))) # Pour m >= 1 on a pi au lieu de 2pi dans la normalisation
 
-        self.E = utils.hbar**2 * self.zeroes ** 2 / (2*mass*radius**2)
+        self.E = utils.hbar**2 * self.zeroes ** 2 / (2*self.mass*radius**2)
         self.phi = self.norm[:,None] * scipy.special.jv(self.m[:,None],self.r[None,:] * self.alpha[:,None])
         self.phi_prime = self.norm[:,None] * self.alpha[:,None] / 2 * (scipy.special.jv(self.m[:,None]-1,self.r[None,:] * self.alpha[:,None]) - scipy.special.jv(self.m[:,None]+1,self.r[None,:] * self.alpha[:,None]))
         self.getAngulaire()
